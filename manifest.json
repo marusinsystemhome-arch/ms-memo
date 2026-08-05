@@ -1,0 +1,14 @@
+{
+  "name": "MSメモ",
+  "short_name": "MSメモ",
+  "description": "モーニングセミナーなどの講座メモアプリ",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#FDF6EC",
+  "theme_color": "#C96A22",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
