@@ -201,6 +201,47 @@
   }
   .dirty-flag.show { display: inline-flex; }
 
+  .menu-wrap { position: relative; }
+  .menu-btn {
+    padding: 8px 12px;
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 700;
+  }
+  .dropdown-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 6px;
+    z-index: 20;
+  }
+  .dropdown-item {
+    appearance: none;
+    width: 100%;
+    border: none;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: left;
+    padding: 9px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .dropdown-item:hover { background: var(--surface-alt); }
+  .history-toggle-arrow { color: var(--ink-faint); font-size: 11px; transition: transform .15s ease; }
+  .history-toggle-arrow.open { transform: rotate(90deg); }
+
   .banner {
     border-radius: var(--radius);
     padding: 13px 16px;
@@ -217,27 +258,6 @@
   .banner-info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--ink); }
   .banner .btn { margin-top: 8px; }
 
-  details.history {
-    margin-bottom: 18px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-  }
-  details.history > summary {
-    cursor: pointer;
-    padding: 12px 16px;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--ink-muted);
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  details.history > summary::-webkit-details-marker { display: none; }
-  details.history > summary::before { content: "▸"; display: inline-block; transition: transform .15s ease; color: var(--ink-faint); }
-  details.history[open] > summary::before { transform: rotate(90deg); }
   .history-list {
     border-top: 1px solid var(--line-soft);
     padding: 6px 8px 10px;
@@ -430,15 +450,19 @@
     <span class="sync-pill"><span id="syncDot" class="dot pulse"></span><span id="syncText">読み込み中…</span></span>
     <span class="spacer"></span>
     <span id="dirtyFlag" class="dirty-flag">● 保存中…</span>
-    <button class="btn" id="reloadBtn" type="button">最新を再読み込み</button>
-  </div>
-
-  <details class="history" id="historyPanel" style="display:none;">
-    <summary>変更履歴（Google ドライブの版管理機能を利用）</summary>
-    <div class="history-list" id="historyList">
-      <div class="history-empty">まだ履歴はありません。</div>
+    <div class="menu-wrap">
+      <button class="btn menu-btn" id="menuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="メニュー">⋮</button>
+      <div class="dropdown-panel" id="dropdownPanel" style="display:none;">
+        <button class="dropdown-item" id="reloadBtn" type="button">最新を再読み込み</button>
+        <div id="historySection" style="display:none;">
+          <button class="dropdown-item" id="historyToggleBtn" type="button" aria-expanded="false">
+            <span>変更履歴</span><span id="historyToggleArrow" class="history-toggle-arrow">▸</span>
+          </button>
+          <div class="history-list" id="historyList" style="display:none;"></div>
+        </div>
+      </div>
     </div>
-  </details>
+  </div>
 
   <button type="button" id="addEntryBtn" class="btn add-entry-btn btn-block">＋ 新しいメモを追加</button>
 
@@ -447,7 +471,7 @@
 
   <footer class="note">
     <p>録音ファイル・画像は Google ドライブの専用フォルダに保存され、このアプリ経由でのみ再生・表示できます。1件あたりの録音ファイルはあまり大きいとアップロードに失敗しやすいため、目安として15MB程度までを推奨します。</p>
-    <p>保存すると Google ドライブ上のデータファイルが更新されます。過去の内容は Google ドライブの版管理機能で保持され、上の「変更履歴」からいつでも見返せます。</p>
+    <p>保存すると Google ドライブ上のデータファイルが更新されます。過去の内容は Google ドライブの版管理機能で保持され、右上メニューの「変更履歴」からいつでも見返せます。</p>
   </footer>
 
 </div>
@@ -542,7 +566,11 @@
     errorBannerMsg: document.getElementById("errorBannerMsg"),
     retryLoadBtn: document.getElementById("retryLoadBtn"),
     freshBanner: document.getElementById("freshBanner"),
-    historyPanel: document.getElementById("historyPanel"),
+    menuBtn: document.getElementById("menuBtn"),
+    dropdownPanel: document.getElementById("dropdownPanel"),
+    historySection: document.getElementById("historySection"),
+    historyToggleBtn: document.getElementById("historyToggleBtn"),
+    historyToggleArrow: document.getElementById("historyToggleArrow"),
     historyList: document.getElementById("historyList"),
     addEntryBtn: document.getElementById("addEntryBtn")
   };
@@ -1114,8 +1142,8 @@
 
   function renderHistory(revisions) {
     state.history = revisions;
-    if (!revisions.length) { els.historyPanel.style.display = "none"; return; }
-    els.historyPanel.style.display = "";
+    if (!revisions.length) { els.historySection.style.display = "none"; return; }
+    els.historySection.style.display = "";
     els.historyList.innerHTML = "";
     var sorted = revisions.slice().sort(function (a, b) { return new Date(b.modifiedTime) - new Date(a.modifiedTime); });
     sorted.forEach(function (r, i) {
@@ -1130,6 +1158,7 @@
 
   function loadVersion(revision, isLatest) {
     function doLoad() {
+      closeMenu();
       setSync("loading", "読み込み中…");
       callBackend("loadRevision", { fileId: state.fileId, revisionId: revision.id }).then(function (res) {
         applyLoadedPayload(res.content, res.content.savedAt || revision.modifiedTime);
@@ -1182,7 +1211,7 @@
         setDirty(false);
         hideAllBanners();
         els.freshBanner.classList.add("show");
-        els.historyPanel.style.display = "none";
+        els.historySection.style.display = "none";
         setSync("ok", "保存データなし（初回入力待ち）");
         return;
       }
@@ -1213,7 +1242,30 @@
     }).catch(function (err) { handleApiError(err, "save"); });
   }
 
+  function closeMenu() {
+    els.dropdownPanel.style.display = "none";
+    els.menuBtn.setAttribute("aria-expanded", "false");
+  }
+  function toggleMenu() {
+    var open = els.dropdownPanel.style.display !== "none";
+    els.dropdownPanel.style.display = open ? "none" : "";
+    els.menuBtn.setAttribute("aria-expanded", open ? "false" : "true");
+  }
+  els.menuBtn.addEventListener("click", function (e) { e.stopPropagation(); toggleMenu(); });
+  document.addEventListener("click", function (e) {
+    if (!els.dropdownPanel.contains(e.target) && e.target !== els.menuBtn) closeMenu();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+
+  els.historyToggleBtn.addEventListener("click", function () {
+    var open = els.historyList.style.display !== "none";
+    els.historyList.style.display = open ? "none" : "";
+    els.historyToggleBtn.setAttribute("aria-expanded", open ? "false" : "true");
+    els.historyToggleArrow.classList.toggle("open", !open);
+  });
+
   els.reloadBtn.addEventListener("click", function () {
+    closeMenu();
     if (state.dirty) {
       customConfirm("未保存の変更は失われます。よろしいですか？", "再読み込み").then(function (ok) { if (ok) loadLatest(); });
     } else {
