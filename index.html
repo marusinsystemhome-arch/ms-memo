@@ -674,15 +674,26 @@
     summary.appendChild(main);
     details.appendChild(summary);
 
+    function updateSummary() {
+      badgeEl.textContent = entry.courseType === "other" ? (entry.courseTypeOther || "その他") : courseLabel(entry.courseType);
+      themeEl.className = "entry-theme" + (entry.theme ? "" : " placeholder");
+      themeEl.textContent = entry.theme || "(テーマ未入力)";
+      var parts = [];
+      if (entry.lecturer) parts.push("講師: " + entry.lecturer);
+      if (entry.audio) parts.push("🎙️ 録音あり");
+      if (entry.images && entry.images.length) parts.push("📷 " + entry.images.length + "枚");
+      subEl.textContent = parts.join(" ・ ");
+    }
+
     var body = document.createElement("div");
     body.className = "entry-body";
-    body.appendChild(buildEntryBody(entry));
+    body.appendChild(buildEntryBody(entry, updateSummary));
     details.appendChild(body);
 
     return details;
   }
 
-  function buildEntryBody(entry) {
+  function buildEntryBody(entry, updateSummary) {
     var frag = document.createDocumentFragment();
 
     // Row: date + course type
@@ -736,13 +747,13 @@
     courseOtherInput.addEventListener("input", function () {
       entry.courseTypeOther = courseOtherInput.value;
       setDirty(true);
-      render();
+      updateSummary();
     });
     courseSelect.addEventListener("change", function () {
       entry.courseType = courseSelect.value;
       courseOtherInput.style.display = entry.courseType === "other" ? "" : "none";
       setDirty(true);
-      render();
+      updateSummary();
     });
     courseGroup.appendChild(courseOtherInput);
 
@@ -753,8 +764,8 @@
     // Row: lecturer + theme
     var row2 = document.createElement("div");
     row2.className = "field-row";
-    row2.appendChild(makeTextGroup("講師名", entry.lecturer, function (v) { entry.lecturer = v; setDirty(true); }, "講師のお名前"));
-    row2.appendChild(makeTextGroup("テーマ", entry.theme, function (v) { entry.theme = v; setDirty(true); render(); }, "講座のテーマ"));
+    row2.appendChild(makeTextGroup("講師名", entry.lecturer, function (v) { entry.lecturer = v; setDirty(true); updateSummary(); }, "講師のお名前"));
+    row2.appendChild(makeTextGroup("テーマ", entry.theme, function (v) { entry.theme = v; setDirty(true); updateSummary(); }, "講座のテーマ"));
     frag.appendChild(row2);
 
     // Memo section
