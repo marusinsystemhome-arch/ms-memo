@@ -1,36 +1,20 @@
 /**
- * Backend for MSメモ (モーニングセミナーのメモアプリ).
+ * Backend for MSメモ (モーニングセミナーのメモアプリ)。個人利用のみを想定しており、
+ * アクセス制御は行っていない(Web App URLを知っていれば誰でも読み書きできる)。
  *
  * Deploy as a Web App:
  *   - Execute as: Me (the account that owns this script / the Drive file)
- *   - Who has access: Anyone
- * That combination means every request runs with THIS account's Drive
- * access, regardless of who is calling it — nobody needs a Google account
- * or ever sees a Google sign-in screen. Access is gated purely by the PIN
- * checked in checkPin_().
- *
- * Set the PIN once via Project Settings -> Script Properties -> APP_PIN.
- * Rotating the PIN later is just editing that one property; no redeploy,
- * no code change.
+ *   - Who has access: Only myself
  *
  * Data is one JSON file (FILE_NAME) holding all entries. Audio/image
  * attachments are stored as separate Drive files inside FOLDER_NAME and
  * stay private — they are only ever served back out through this script's
- * doGet "file" action (?action=file&id=...&pin=...), which streams the
- * blob directly. Nothing needs its Drive sharing changed.
+ * doGet "file" action (?action=file&id=...), which streams the blob
+ * directly. Nothing needs its Drive sharing changed.
  */
 
 var FILE_NAME = "MSメモ_データ.json";
 var FOLDER_NAME = "MSメモ_添付ファイル";
-
-function getPin_() {
-  return PropertiesService.getScriptProperties().getProperty("APP_PIN");
-}
-
-function checkPin_(pin) {
-  var expected = getPin_();
-  return !!expected && typeof pin === "string" && pin === expected;
-}
 
 function jsonOutput_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
@@ -85,9 +69,6 @@ function doGet(e) {
   var action = e.parameter.action;
 
   if (action === "file") {
-    if (!checkPin_(e.parameter.pin)) {
-      return ContentService.createTextOutput("forbidden").setMimeType(ContentService.MimeType.TEXT);
-    }
     try {
       var file = DriveApp.getFileById(e.parameter.id);
       return file.getBlob();
@@ -105,12 +86,7 @@ function doPost(e) {
     if (e.postData && e.postData.contents) {
       body = JSON.parse(e.postData.contents);
     }
-    var pin = body.pin;
     var action = body.action;
-
-    if (!checkPin_(pin)) {
-      return jsonOutput_({ ok: false, error: "invalid_pin" });
-    }
 
     if (action === "load") {
       var file = findFile_();

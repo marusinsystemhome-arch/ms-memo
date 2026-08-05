@@ -217,10 +217,6 @@
   .banner-info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--ink); }
   .banner .btn { margin-top: 8px; }
 
-  .pin-form { display: flex; gap: 8px; margin-top: 10px; max-width: 260px; }
-  .pin-input { letter-spacing: 0.3em; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; text-align: center; }
-  .pin-error { margin: 8px 0 0; color: var(--danger); font-weight: 700; font-size: 12.5px; }
-
   details.history {
     margin-bottom: 18px;
     background: var(--surface);
@@ -415,18 +411,8 @@
     <div class="masthead-text">
       <p class="eyebrow">MORNING SEMINAR NOTE</p>
       <h1>MSメモ</h1>
-      <p class="sub">モーニングセミナー・基礎講座などのメモアプリです。日付・講座区分・講師名・テーマと、録音ファイル/AI要約/フリーメモ/画像を記録できます。PINを入力すると保存・自動読み込みされます。</p>
+      <p class="sub">モーニングセミナー・基礎講座などのメモアプリです。日付・講座区分・講師名・テーマと、録音ファイル/AI要約/フリーメモ/画像を記録できます。入力すると自動で保存されます。</p>
     </div>
-  </div>
-
-  <div id="pinBanner" class="banner banner-warn show">
-    <strong>PINを入力してください</strong>
-    <span>入力すると、これまでの内容を読み込んだり、保存できるようになります。入力しなくても新規入力の下書き自体は可能です。</span>
-    <form id="pinForm" class="pin-form" autocomplete="off">
-      <input type="password" inputmode="numeric" pattern="[0-9]*" id="pinInput" class="field pin-input" placeholder="PIN" maxlength="12" autocomplete="off">
-      <button class="btn btn-primary" id="pinSubmitBtn" type="submit">登録</button>
-    </form>
-    <p id="pinError" class="pin-error" style="display:none;">PINが正しくありません。もう一度入力してください。</p>
   </div>
 
   <div id="errorBanner" class="banner banner-err">
@@ -441,7 +427,7 @@
   </div>
 
   <div class="statusbar">
-    <span class="sync-pill"><span id="syncDot" class="dot pulse"></span><span id="syncText">未登録</span></span>
+    <span class="sync-pill"><span id="syncDot" class="dot pulse"></span><span id="syncText">読み込み中…</span></span>
     <span class="spacer"></span>
     <span id="dirtyFlag" class="dirty-flag">● 保存中…</span>
     <button class="btn" id="reloadBtn" type="button">最新を再読み込み</button>
@@ -460,7 +446,7 @@
   <div class="empty-state" id="emptyState" style="display:none;">まだメモがありません。「＋ 新しいメモを追加」から記録してみましょう。</div>
 
   <footer class="note">
-    <p>録音ファイル・画像は Google ドライブの専用フォルダに保存され、外部には公開されません（このアプリからPIN付きでのみ再生・表示できます）。1件あたりの録音ファイルはあまり大きいとアップロードに失敗しやすいため、目安として15MB程度までを推奨します。</p>
+    <p>録音ファイル・画像は Google ドライブの専用フォルダに保存され、このアプリ経由でのみ再生・表示できます。1件あたりの録音ファイルはあまり大きいとアップロードに失敗しやすいため、目安として15MB程度までを推奨します。</p>
     <p>保存すると Google ドライブ上のデータファイルが更新されます。過去の内容は Google ドライブの版管理機能で保持され、上の「変更履歴」からいつでも見返せます。</p>
   </footer>
 
@@ -480,8 +466,7 @@
 (function () {
   "use strict";
 
-  var APPS_SCRIPT_URL = "APPS_SCRIPT_URL_PLACEHOLDER";
-  var PIN_STORAGE_KEY = "ms-memo:pin";
+  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxs8TpYfchQ0F3VihHrLt3v3jwJM4XbPf29Iz8txLPZv2qnbmhdUYVWA0ZtYQ8Fv-vb-g/exec";
   var WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
 
   var COURSE_TYPES = [
@@ -541,8 +526,6 @@
     fileId: null,
     dirty: false,
     saving: false,
-    unlocked: false,
-    pin: null,
     history: [],
     openIds: new Set(),
     uploading: {} // entryId -> { audio: bool, images: {tempId: true} }
@@ -555,10 +538,6 @@
     syncText: document.getElementById("syncText"),
     dirtyFlag: document.getElementById("dirtyFlag"),
     reloadBtn: document.getElementById("reloadBtn"),
-    pinBanner: document.getElementById("pinBanner"),
-    pinForm: document.getElementById("pinForm"),
-    pinInput: document.getElementById("pinInput"),
-    pinError: document.getElementById("pinError"),
     errorBanner: document.getElementById("errorBanner"),
     errorBannerMsg: document.getElementById("errorBannerMsg"),
     retryLoadBtn: document.getElementById("retryLoadBtn"),
@@ -600,7 +579,7 @@
   }
 
   function hideAllBanners() {
-    [els.pinBanner, els.errorBanner, els.freshBanner].forEach(function (b) { b.classList.remove("show"); });
+    [els.errorBanner, els.freshBanner].forEach(function (b) { b.classList.remove("show"); });
   }
 
   function fmtWhen(iso) {
@@ -627,7 +606,7 @@
   function setDirty(v) {
     state.dirty = v;
     els.dirtyFlag.classList.toggle("show", v);
-    if (v && state.pin) { scheduleAutoSave(); }
+    if (v) { scheduleAutoSave(); }
   }
 
   function sortedEntries() {
@@ -638,7 +617,7 @@
   }
 
   function fileUrl(fileId) {
-    return APPS_SCRIPT_URL + "?action=file&id=" + encodeURIComponent(fileId) + "&pin=" + encodeURIComponent(state.pin || "");
+    return APPS_SCRIPT_URL + "?action=file&id=" + encodeURIComponent(fileId);
   }
 
   // ---------------- Rendering ----------------
@@ -1153,26 +1132,10 @@
     }
   }
 
-  // ---------------- PIN + Apps Script backend ----------------
-
-  function loadStoredPin() {
-    try { return localStorage.getItem(PIN_STORAGE_KEY) || null; } catch (e) { return null; }
-  }
-  function storePin(pin) { try { localStorage.setItem(PIN_STORAGE_KEY, pin); } catch (e) {} }
-  function clearStoredPin() { try { localStorage.removeItem(PIN_STORAGE_KEY); } catch (e) {} }
-
-  function setUnlockedUi(unlocked) {
-    state.unlocked = unlocked;
-    if (!unlocked) {
-      hideAllBanners();
-      els.pinBanner.classList.add("show");
-      setSync("warn", "未登録");
-      els.historyPanel.style.display = "none";
-    }
-  }
+  // ---------------- Apps Script backend ----------------
 
   function callBackend(action, extra) {
-    var body = Object.assign({ action: action, pin: state.pin }, extra || {});
+    var body = Object.assign({ action: action }, extra || {});
     return fetch(APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -1182,58 +1145,21 @@
       return res.json();
     }).then(function (res) {
       if (!res.ok) {
-        if (res.error === "invalid_pin") {
-          var err = new Error("PINが正しくありません");
-          err.invalidPin = true;
-          throw err;
-        }
         throw new Error(res.message || res.error || "不明なエラー");
       }
       return res;
     });
   }
 
-  function unlockWithPin(pin) {
-    els.pinError.style.display = "none";
-    var submitBtn = document.getElementById("pinSubmitBtn");
-    if (submitBtn) submitBtn.disabled = true;
-    state.pin = pin;
-    setSync("loading", "確認中…");
-    return loadLatest(true).then(function () {
-      storePin(pin);
-      setUnlockedUi(true);
-    }).catch(function (err) {
-      state.pin = null;
-      if (err && err.invalidPin) {
-        els.pinError.style.display = "";
-        setSync("warn", "未登録");
-      } else {
-        handleApiError(err, "load");
-      }
-    }).then(function () { if (submitBtn) submitBtn.disabled = false; });
-  }
-
   function handleApiError(err, ctx) {
     hideAllBanners();
-    if (err && err.invalidPin) {
-      clearStoredPin();
-      state.pin = null;
-      setUnlockedUi(false);
-      els.pinError.style.display = "";
-    } else {
-      els.errorBannerMsg.textContent = (err && err.message) ? err.message : "しばらくしてからもう一度お試しください。";
-      els.errorBanner.classList.add("show");
-      setSync("err", ctx === "save" ? "保存に失敗しました" : "読み込みに失敗しました");
-    }
+    els.errorBannerMsg.textContent = (err && err.message) ? err.message : "しばらくしてからもう一度お試しください。";
+    els.errorBanner.classList.add("show");
+    setSync("err", ctx === "save" ? "保存に失敗しました" : "読み込みに失敗しました");
     if (ctx === "save") { state.saving = false; }
   }
 
-  function loadLatest(isUnlockAttempt) {
-    if (!state.pin) {
-      setUnlockedUi(false);
-      render();
-      return Promise.resolve();
-    }
+  function loadLatest() {
     hideAllBanners();
     setSync("loading", "読み込み中…");
 
@@ -1254,13 +1180,13 @@
       setSync("ok", "最新版を読み込みました · 保存: " + (state.lastSavedAt ? fmtWhen(state.lastSavedAt) : "-"));
       renderHistory(res.revisions || []);
     }).catch(function (err) {
-      if (!isUnlockAttempt) handleApiError(err, "load");
+      handleApiError(err, "load");
       throw err;
     });
   }
 
   function saveNow() {
-    if (!state.pin || state.saving) return;
+    if (state.saving) return;
     state.saving = true;
     setSync("loading", "保存中…");
 
@@ -1285,26 +1211,9 @@
   });
   els.retryLoadBtn.addEventListener("click", function () { loadLatest(); });
   els.addEntryBtn.addEventListener("click", addEntry);
-  els.pinForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var pin = els.pinInput.value.trim();
-    if (!pin) return;
-    unlockWithPin(pin);
-  });
 
   render();
-  var storedPin = loadStoredPin();
-  if (storedPin) {
-    state.pin = storedPin;
-    setSync("loading", "確認中…");
-    loadLatest(true).then(function () { setUnlockedUi(true); }).catch(function () {
-      state.pin = null;
-      clearStoredPin();
-      setUnlockedUi(false);
-    });
-  } else {
-    setUnlockedUi(false);
-  }
+  loadLatest().catch(function () {});
 })();
 </script>
 
