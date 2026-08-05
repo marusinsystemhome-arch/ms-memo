@@ -470,7 +470,7 @@
   <div class="empty-state" id="emptyState" style="display:none;">まだメモがありません。「＋ 新しいメモを追加」から記録してみましょう。</div>
 
   <footer class="note">
-    <p>録音ファイル・画像は Google ドライブの専用フォルダに保存され、このアプリ経由でのみ再生・表示できます。1件あたりの録音ファイルはあまり大きいとアップロードに失敗しやすいため、目安として15MB程度までを推奨します。</p>
+    <p>録音ファイル・画像は Google ドライブの専用フォルダに保存され、このアプリ経由でのみ再生・表示できます。1件あたりの録音ファイルはあまり大きいとアップロードに失敗しやすいため、目安として15MB程度までを推奨します。アップロードすると自動でAI（Gemini）が文字起こし・要約し、「AIで要約した内容」欄に反映します。</p>
     <p>保存すると Google ドライブ上のデータファイルが更新されます。過去の内容は Google ドライブの版管理機能で保持され、右上メニューの「変更履歴」からいつでも見返せます。</p>
   </footer>
 
@@ -552,7 +552,8 @@
     saving: false,
     history: [],
     openIds: new Set(),
-    uploading: {} // entryId -> { audio: bool, images: {tempId: true} }
+    uploading: {}, // entryId -> { audio: bool, images: {tempId: true} }
+    summaryStatus: {} // entryId -> "pending" | "error:<message>"
   };
 
   var els = {
@@ -805,7 +806,7 @@
     memoSection.appendChild(memoTitle);
 
     memoSection.appendChild(buildAudioRow(entry));
-    memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "iPhoneの録音をAI（ChatGPT/Claudeなど）で要約した文章を貼り付け"));
+    memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "録音をアップロードすると自動で要約されます（手動で編集・追記も可）"));
     memoSection.appendChild(makeTextareaGroup("フリーメモ", entry.freeMemo, function (v) { entry.freeMemo = v; setDirty(true); }, "自由に書き込むメモ欄"));
     memoSection.appendChild(buildImagesRow(entry));
 
@@ -874,6 +875,11 @@
     label.style.marginBottom = "6px";
     wrap.appendChild(label);
 
+    var openVmBtn = document.createElement("a");
+    openVmBtn.className = "btn";
+    openVmBtn.href = "voicememos://";
+    openVmBtn.textContent = "📱 ボイスメモを開く";
+
     var btnRow = document.createElement("div");
     btnRow.className = "attach-btn-row";
 
@@ -889,6 +895,14 @@
 
     var statusEl = document.createElement("span");
     statusEl.className = "attach-status";
+    var summaryStatus = state.summaryStatus[entry.id];
+    if (summaryStatus === "pending") {
+      statusEl.textContent = "AIで要約中…";
+      statusEl.className = "attach-status uploading";
+    } else if (summaryStatus && summaryStatus.indexOf("error:") === 0) {
+      statusEl.textContent = "要約に失敗しました: " + summaryStatus.slice(6);
+      statusEl.className = "attach-status err";
+    }
 
     pickBtn.addEventListener("click", function () { fileInput.click(); });
     fileInput.addEventListener("change", function () {
@@ -898,10 +912,26 @@
       handleAudioSelected(entry, file, statusEl);
     });
 
+    var retryBtn = null;
+    if (summaryStatus && summaryStatus.indexOf("error:") === 0) {
+      retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "btn";
+      retryBtn.textContent = "要約を再試行";
+      retryBtn.addEventListener("click", function () { requestAudioSummary(entry); });
+    }
+
+    var hint = document.createElement("div");
+    hint.className = "weekday-hint";
+    hint.textContent = "①ボイスメモを開いて録音 → ②戻ってきたら「録音ファイルを選択」でその録音を選ぶと、AIが自動で文字起こし・要約します。（開かない場合はホーム画面からボイスメモアプリを直接起動してください）";
+
+    btnRow.appendChild(openVmBtn);
     btnRow.appendChild(pickBtn);
     btnRow.appendChild(fileInput);
     btnRow.appendChild(statusEl);
+    if (retryBtn) btnRow.appendChild(retryBtn);
     wrap.appendChild(btnRow);
+    wrap.appendChild(hint);
 
     if (entry.audio) {
       var playerWrap = document.createElement("div");
@@ -919,6 +949,7 @@
       chipDel.setAttribute("aria-label", "録音ファイルを削除");
       chipDel.addEventListener("click", function () {
         entry.audio = null;
+        delete state.summaryStatus[entry.id];
         setDirty(true);
         render();
       });
@@ -941,6 +972,7 @@
       }).then(function (res) {
         entry.audio = { fileId: res.fileId, name: file.name };
         setDirty(true);
+        requestAudioSummary(entry);
         render();
       }).catch(function (err) {
         statusEl.textContent = "アップロードに失敗しました: " + (err && err.message ? err.message : "");
@@ -954,6 +986,22 @@
     } else {
       doUpload();
     }
+  }
+
+  function requestAudioSummary(entry) {
+    if (!entry.audio) return;
+    state.summaryStatus[entry.id] = "pending";
+    render();
+    callBackend("summarizeAudio", { fileId: entry.audio.fileId }).then(function (res) {
+      delete state.summaryStatus[entry.id];
+      var existing = (entry.aiSummary || "").trim();
+      entry.aiSummary = existing ? existing + "\n\n---\n" + res.summary : res.summary;
+      setDirty(true);
+      render();
+    }).catch(function (err) {
+      state.summaryStatus[entry.id] = "error:" + (err && err.message ? err.message : "不明なエラー");
+      render();
+    });
   }
 
   // ---------------- Images ----------------
@@ -1104,6 +1152,7 @@
     function doDelete() {
       state.entries = state.entries.filter(function (e) { return e.id !== id; });
       state.openIds.delete(id);
+      delete state.summaryStatus[id];
       setDirty(true);
       render();
     }
@@ -1135,6 +1184,7 @@
       };
     });
     state.entries = loaded;
+    state.summaryStatus = {};
     state.lastSavedAt = savedAt || payload.savedAt || null;
     render();
     setDirty(false);

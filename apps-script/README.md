@@ -35,6 +35,24 @@
   アプリからの表示・再生・ダウンロードは、すべてこのApps Script経由
   （`?action=file&id=...`）で行われる。
 
+## 録音の自動文字起こし・要約（Gemini API）
+
+録音ファイルをアップロードすると、自動でGemini APIに音声を渡して
+文字起こし・要約させ、「AIで要約した内容」欄に結果を貼り付ける。
+
+セットアップ:
+
+1. https://aistudio.google.com/apikey でGemini APIキーを取得する
+   （marusinsystem.home@gmail.com のGoogleアカウントでOK。無料枠あり）
+2. Apps Scriptのエディタ左側の歯車アイコン「プロジェクトの設定」を開く
+3. 「スクリプト プロパティ」→「スクリプト プロパティを追加」
+   - プロパティ: `GEMINI_API_KEY`
+   - 値: 取得したAPIキー
+4. 保存する（デプロイし直す必要はない。次回のリクエストから有効）
+
+APIキーが未設定の場合、要約は失敗しエラーメッセージが表示されるが、
+録音ファイル自体のアップロードには影響しない。
+
 ## Code.gsを更新した場合
 
 `git push` だけでは反映されない。https://script.google.com/ でスクリプトを

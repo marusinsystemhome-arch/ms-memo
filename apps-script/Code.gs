@@ -15,6 +15,8 @@
 
 var FILE_NAME = "MSメモ_データ.json";
 var FOLDER_NAME = "MSメモ_添付ファイル";
+var GEMINI_MODEL = "gemini-2.5-flash";
+var SUMMARY_PROMPT = "これは講座・セミナーの録音です。内容を聞き取り、要点を日本語の簡潔な箇条書きで要約してください。前置きや「以下要約です」といった案内文は不要で、要約の本文だけを出力してください。";
 
 function jsonOutput_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
@@ -63,6 +65,48 @@ function uploadFile_(filename, mimeType, dataBase64) {
   var blob = Utilities.newBlob(bytes, mimeType, filename);
   var file = folder.createFile(blob);
   return file.getId();
+}
+
+function summarizeAudio_(fileId) {
+  var apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEYが未設定です。Apps Scriptの「プロジェクトの設定」→「スクリプト プロパティ」で設定してください。");
+  }
+
+  var file = DriveApp.getFileById(fileId);
+  var blob = file.getBlob();
+  var mimeType = blob.getContentType() || "audio/mp4";
+  if (mimeType === "audio/x-m4a") mimeType = "audio/mp4";
+  var base64 = Utilities.base64Encode(blob.getBytes());
+
+  var url = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL +
+    ":generateContent?key=" + encodeURIComponent(apiKey);
+  var payload = {
+    contents: [{
+      parts: [
+        { text: SUMMARY_PROMPT },
+        { inline_data: { mime_type: mimeType, data: base64 } }
+      ]
+    }]
+  };
+  var res = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  var json = JSON.parse(res.getContentText());
+  if (code !== 200) {
+    var msg = (json.error && json.error.message) || ("Gemini APIエラー (" + code + ")");
+    throw new Error(msg);
+  }
+  var candidate = json.candidates && json.candidates[0];
+  var parts = candidate && candidate.content && candidate.content.parts;
+  var text = parts ? parts.map(function (p) { return p.text || ""; }).join("") : "";
+  text = text.trim();
+  if (!text) throw new Error("要約結果を取得できませんでした");
+  return text;
 }
 
 function doGet(e) {
@@ -132,6 +176,13 @@ function doPost(e) {
       }
       var fileId = uploadFile_(filename, mimeType, dataBase64);
       return jsonOutput_({ ok: true, fileId: fileId, name: filename });
+    }
+
+    if (action === "summarizeAudio") {
+      var summaryFileId = body.fileId;
+      if (!summaryFileId) return jsonOutput_({ ok: false, error: "missing_params" });
+      var summary = summarizeAudio_(summaryFileId);
+      return jsonOutput_({ ok: true, summary: summary });
     }
 
     return jsonOutput_({ ok: false, error: "unknown_action" });
