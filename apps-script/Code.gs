@@ -15,7 +15,7 @@
 
 var FILE_NAME = "MSメモ_データ.json";
 var FOLDER_NAME = "MSメモ_添付ファイル";
-var GEMINI_MODEL = "gemini-2.5-flash";
+var GEMINI_MODEL = "gemini-flash-latest";
 var SUMMARY_PROMPT = "これは講座・セミナーの録音です。内容を聞き取り、要点を日本語の簡潔な箇条書きで要約してください。前置きや「以下要約です」といった案内文は不要で、要約の本文だけを出力してください。";
 
 function jsonOutput_(obj) {
