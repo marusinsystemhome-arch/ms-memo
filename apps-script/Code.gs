@@ -13,6 +13,7 @@
  * directly. Nothing needs its Drive sharing changed.
  */
 
+var APP_FOLDER_NAME = "MSメモ";
 var FILE_NAME = "MSメモ_データ.json";
 var FOLDER_NAME = "MSメモ_添付ファイル";
 var GEMINI_MODEL = "gemini-flash-latest";
@@ -23,15 +24,38 @@ function jsonOutput_(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function getAppFolder_() {
+  var it = DriveApp.getFoldersByName(APP_FOLDER_NAME);
+  if (it.hasNext()) return it.next();
+  return DriveApp.createFolder(APP_FOLDER_NAME);
+}
+
 function findFile_() {
-  var it = DriveApp.getFilesByName(FILE_NAME);
-  return it.hasNext() ? it.next() : null;
+  var appFolder = getAppFolder_();
+  var it = appFolder.getFilesByName(FILE_NAME);
+  if (it.hasNext()) return it.next();
+  // 移行: 過去にMy Drive直下に保存されていたデータファイルをMSメモフォルダへ移動
+  var rootIt = DriveApp.getFilesByName(FILE_NAME);
+  if (rootIt.hasNext()) {
+    var f = rootIt.next();
+    f.moveTo(appFolder);
+    return f;
+  }
+  return null;
 }
 
 function getOrCreateFolder_() {
-  var it = DriveApp.getFoldersByName(FOLDER_NAME);
+  var appFolder = getAppFolder_();
+  var it = appFolder.getFoldersByName(FOLDER_NAME);
   if (it.hasNext()) return it.next();
-  return DriveApp.createFolder(FOLDER_NAME);
+  // 移行: 過去にMy Drive直下に作られていた添付フォルダをMSメモフォルダへ移動
+  var anyIt = DriveApp.getFoldersByName(FOLDER_NAME);
+  if (anyIt.hasNext()) {
+    var f = anyIt.next();
+    f.moveTo(appFolder);
+    return f;
+  }
+  return appFolder.createFolder(FOLDER_NAME);
 }
 
 function listRevisions_(fileId) {
@@ -154,7 +178,7 @@ function doPost(e) {
       if (f) {
         f.setContent(text);
       } else {
-        f = DriveApp.createFile(FILE_NAME, text, "application/json");
+        f = getAppFolder_().createFile(FILE_NAME, text, "application/json");
       }
       return jsonOutput_({ ok: true, fileId: f.getId(), modifiedTime: new Date().toISOString() });
     }
