@@ -91,6 +91,34 @@ function uploadFile_(filename, mimeType, dataBase64) {
   return file.getId();
 }
 
+var CHUNK_TEMP_PREFIX = "__chunk_";
+
+// 大きい録音ファイルは1回のPOSTだと(特にモバイル回線で)途中で通信が
+// 切れて失敗しやすいため、クライアント側で分割して送ってもらい、
+// ここで一時ファイルとして貯めておいて最後のチャンクで結合する。
+function uploadFileChunk_(uploadId, chunkIndex, totalChunks, filename, mimeType, dataBase64) {
+  var folder = getOrCreateFolder_();
+  var bytes = Utilities.base64Decode(dataBase64);
+  var chunkName = CHUNK_TEMP_PREFIX + uploadId + "_" + chunkIndex;
+  folder.createFile(Utilities.newBlob(bytes, "application/octet-stream", chunkName));
+
+  if (chunkIndex < totalChunks - 1) {
+    return { done: false };
+  }
+
+  var allBytes = [];
+  for (var i = 0; i < totalChunks; i++) {
+    var name = CHUNK_TEMP_PREFIX + uploadId + "_" + i;
+    var it = folder.getFilesByName(name);
+    if (!it.hasNext()) throw new Error("アップロードが不完全です(チャンク " + i + " が見つかりません)");
+    var chunkFile = it.next();
+    allBytes = allBytes.concat(chunkFile.getBlob().getBytes());
+    chunkFile.setTrashed(true);
+  }
+  var finalFile = folder.createFile(Utilities.newBlob(allBytes, mimeType, filename));
+  return { done: true, fileId: finalFile.getId() };
+}
+
 function summarizeAudio_(fileId) {
   var apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
   if (!apiKey) {
@@ -200,6 +228,23 @@ function doPost(e) {
       }
       var fileId = uploadFile_(filename, mimeType, dataBase64);
       return jsonOutput_({ ok: true, fileId: fileId, name: filename });
+    }
+
+    if (action === "uploadFileChunk") {
+      var uploadId = body.uploadId;
+      var chunkIndex = body.chunkIndex;
+      var totalChunks = body.totalChunks;
+      var chunkFilename = body.filename;
+      var chunkMimeType = body.mimeType;
+      var chunkDataBase64 = body.dataBase64;
+      if (!uploadId || chunkIndex == null || !totalChunks || !chunkFilename || !chunkMimeType || !chunkDataBase64) {
+        return jsonOutput_({ ok: false, error: "missing_params" });
+      }
+      var chunkResult = uploadFileChunk_(uploadId, chunkIndex, totalChunks, chunkFilename, chunkMimeType, chunkDataBase64);
+      if (chunkResult.done) {
+        return jsonOutput_({ ok: true, done: true, fileId: chunkResult.fileId, name: chunkFilename });
+      }
+      return jsonOutput_({ ok: true, done: false });
     }
 
     if (action === "summarizeAudio") {

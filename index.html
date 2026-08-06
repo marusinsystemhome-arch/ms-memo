@@ -980,8 +980,8 @@
     function doUpload() {
       statusEl.textContent = "アップロード中…";
       statusEl.className = "attach-status uploading";
-      blobToBase64(file).then(function (base64) {
-        return callBackend("uploadFile", { filename: file.name, mimeType: file.type || "application/octet-stream", dataBase64: base64 });
+      uploadFileChunked(file, function (done, total) {
+        statusEl.textContent = "アップロード中…（" + done + "/" + total + "）";
       }).then(function (res) {
         entry.audio = { fileId: res.fileId, name: file.name };
         setDirty(true);
@@ -999,6 +999,36 @@
     } else {
       doUpload();
     }
+  }
+
+  // 大きいファイルを一度のPOSTで送るとモバイル回線で失敗しやすいため、
+  // 3MBずつに分割して順番に送り、サーバー側で結合してもらう。
+  function uploadFileChunked(file, onProgress) {
+    var CHUNK_SIZE = 3 * 1024 * 1024;
+    var totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+    var uploadId = Date.now() + "_" + Math.random().toString(36).slice(2);
+    var mimeType = file.type || "application/octet-stream";
+
+    function sendChunk(index) {
+      var start = index * CHUNK_SIZE;
+      var end = Math.min(file.size, start + CHUNK_SIZE);
+      return blobToBase64(file.slice(start, end)).then(function (base64) {
+        return callBackend("uploadFileChunk", {
+          uploadId: uploadId,
+          chunkIndex: index,
+          totalChunks: totalChunks,
+          filename: file.name,
+          mimeType: mimeType,
+          dataBase64: base64
+        });
+      }).then(function (res) {
+        if (onProgress) onProgress(index + 1, totalChunks);
+        if (res.done) return res;
+        return sendChunk(index + 1);
+      });
+    }
+
+    return sendChunk(0);
   }
 
   function requestAudioSummary(entry) {
