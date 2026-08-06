@@ -818,7 +818,7 @@
     memoSection.appendChild(memoTitle);
 
     memoSection.appendChild(buildAudioRow(entry));
-    memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "録音をアップロードすると自動で要約されます（手動で編集・追記も可）"));
+    memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "録音をアップロードすると自動で要約されます（手動で編集・追記も可）", { autoGrow: true }));
     memoSection.appendChild(makeTextareaGroup("フリーメモ", entry.freeMemo, function (v) { entry.freeMemo = v; setDirty(true); }, "自由に書き込むメモ欄"));
     memoSection.appendChild(buildImagesRow(entry));
 
@@ -853,7 +853,8 @@
     return group;
   }
 
-  function makeTextareaGroup(labelText, value, onChange, placeholder) {
+  function makeTextareaGroup(labelText, value, onChange, placeholder, opts) {
+    opts = opts || {};
     var group = document.createElement("div");
     group.className = "attach-row";
     var label = document.createElement("label");
@@ -867,7 +868,20 @@
     textarea.className = "field";
     textarea.value = value || "";
     if (placeholder) textarea.placeholder = placeholder;
-    textarea.addEventListener("input", function () { onChange(textarea.value); });
+    if (opts.autoGrow) {
+      // 6行分くらいは最初から見えるようにし、内容が増えたら
+      // タップ操作なしで自動的に高さが伸びて全文が見える形にする。
+      textarea.style.minHeight = "150px";
+      textarea.style.overflow = "hidden";
+      var grow = function () {
+        textarea.style.height = "auto";
+        textarea.style.height = textarea.scrollHeight + "px";
+      };
+      textarea.addEventListener("input", function () { onChange(textarea.value); grow(); });
+      setTimeout(grow, 0);
+    } else {
+      textarea.addEventListener("input", function () { onChange(textarea.value); });
+    }
     group.appendChild(label);
     group.appendChild(textarea);
     return group;
