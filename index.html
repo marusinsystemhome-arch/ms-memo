@@ -944,7 +944,14 @@
       playerWrap.className = "audio-player";
       var audioEl = document.createElement("audio");
       audioEl.controls = true;
-      audioEl.src = fileUrl(entry.audio.fileId);
+      // Apps ScriptのWebアプリはHTTP Rangeリクエストに対応しておらず、
+      // <audio src="...">で直接指定すると特にサイズの大きいファイルで
+      // 再生エラーになりやすい(iOS Safari)。fetchで丸ごと取得しBlob URLに
+      // することで回避する。
+      fetch(fileUrl(entry.audio.fileId))
+        .then(function (res) { return res.blob(); })
+        .then(function (blob) { audioEl.src = URL.createObjectURL(blob); })
+        .catch(function () { /* controls will just show an unplayable state */ });
       var chip = document.createElement("span");
       chip.className = "file-chip";
       var chipText = document.createElement("span");
