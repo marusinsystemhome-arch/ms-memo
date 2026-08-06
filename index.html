@@ -336,7 +336,9 @@
     letter-spacing: 0.04em; margin-bottom: 4px;
   }
   .field {
+    box-sizing: border-box;
     width: 100%;
+    height: 38px;
     font: inherit;
     font-size: 14px;
     color: var(--ink);
@@ -346,6 +348,11 @@
     padding: 8px 10px;
     resize: vertical;
     line-height: 1.5;
+  }
+  textarea.field { height: auto; }
+  input[type="date"].field {
+    -webkit-appearance: none;
+    appearance: none;
   }
   .field:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
   textarea.field { min-height: 84px; font-family: inherit; }
@@ -496,14 +503,19 @@
   var COURSE_TYPES = [
     { key: "ms", label: "MS（モーニングセミナー）" },
     { key: "kiso", label: "基礎講座" },
-    { key: "kenshu", label: "研修会・講習会" },
-    { key: "koenkai", label: "全国講演会" },
-    { key: "reikai", label: "会長例会" },
+    { key: "keiei", label: "経営講演会" },
     { key: "other", label: "その他" }
   ];
+  // 過去の講座区分（選択肢からは削除済みだが、既存メモの表示のために残す）
+  var LEGACY_COURSE_LABELS = {
+    kenshu: "研修会・講習会",
+    koenkai: "全国講演会",
+    reikai: "会長例会"
+  };
   function courseLabel(key) {
     var found = COURSE_TYPES.find(function (c) { return c.key === key; });
-    return found ? found.label : "";
+    if (found) return found.label;
+    return LEGACY_COURSE_LABELS[key] || "";
   }
 
   function todayStr() {
@@ -875,11 +887,6 @@
     label.style.marginBottom = "6px";
     wrap.appendChild(label);
 
-    var openVmBtn = document.createElement("a");
-    openVmBtn.className = "btn";
-    openVmBtn.href = "voicememos://";
-    openVmBtn.textContent = "📱 ボイスメモを開く";
-
     var btnRow = document.createElement("div");
     btnRow.className = "attach-btn-row";
 
@@ -923,9 +930,8 @@
 
     var hint = document.createElement("div");
     hint.className = "weekday-hint";
-    hint.textContent = "①ボイスメモを開いて録音 → ②戻ってきたら「録音ファイルを選択」でその録音を選ぶと、AIが自動で文字起こし・要約します。（開かない場合はホーム画面からボイスメモアプリを直接起動してください）";
+    hint.textContent = "①ボイスメモアプリで録音 → ②戻ってきたら「録音ファイルを選択」でその録音を選ぶと、AIが自動で文字起こし・要約します。";
 
-    btnRow.appendChild(openVmBtn);
     btnRow.appendChild(pickBtn);
     btnRow.appendChild(fileInput);
     btnRow.appendChild(statusEl);
