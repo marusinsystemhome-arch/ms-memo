@@ -818,7 +818,10 @@
     memoSection.appendChild(memoTitle);
 
     memoSection.appendChild(buildAudioRow(entry));
-    memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "録音をアップロードすると自動で要約されます（手動で編集・追記も可）", { autoGrow: true }));
+    memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "録音をアップロードすると自動で要約されます（手動で編集・追記も可）", {
+      autoGrow: true,
+      onClear: function () { entry.aiSummary = ""; setDirty(true); }
+    }));
     memoSection.appendChild(makeTextareaGroup("フリーメモ", entry.freeMemo, function (v) { entry.freeMemo = v; setDirty(true); }, "自由に書き込むメモ欄"));
     memoSection.appendChild(buildImagesRow(entry));
 
@@ -857,6 +860,11 @@
     opts = opts || {};
     var group = document.createElement("div");
     group.className = "attach-row";
+    var labelRow = document.createElement("div");
+    labelRow.style.display = "flex";
+    labelRow.style.alignItems = "center";
+    labelRow.style.justifyContent = "space-between";
+    labelRow.style.gap = "8px";
     var label = document.createElement("label");
     label.textContent = labelText;
     label.style.display = "block";
@@ -864,6 +872,7 @@
     label.style.fontWeight = "700";
     label.style.color = "var(--ink-muted)";
     label.style.marginBottom = "4px";
+    labelRow.appendChild(label);
     var textarea = document.createElement("textarea");
     textarea.className = "field";
     textarea.value = value || "";
@@ -882,7 +891,25 @@
     } else {
       textarea.addEventListener("input", function () { onChange(textarea.value); });
     }
-    group.appendChild(label);
+    if (opts.onClear) {
+      var clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "btn";
+      clearBtn.textContent = "🗑️ 削除";
+      clearBtn.style.padding = "3px 9px";
+      clearBtn.style.fontSize = "12px";
+      clearBtn.addEventListener("click", function () {
+        if (!textarea.value.trim()) return;
+        customConfirm("この内容を削除しますか？", "削除").then(function (ok) {
+          if (!ok) return;
+          textarea.value = "";
+          opts.onClear();
+          if (opts.autoGrow) { textarea.style.height = "auto"; textarea.style.height = textarea.scrollHeight + "px"; }
+        });
+      });
+      labelRow.appendChild(clearBtn);
+    }
+    group.appendChild(labelRow);
     group.appendChild(textarea);
     return group;
   }
