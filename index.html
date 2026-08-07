@@ -934,11 +934,11 @@
     });
 
     var retryBtn = null;
-    if (summaryStatus && summaryStatus.indexOf("error:") === 0) {
+    if (entry.audio) {
       retryBtn = document.createElement("button");
       retryBtn.type = "button";
       retryBtn.className = "btn";
-      retryBtn.textContent = "要約を再試行";
+      retryBtn.textContent = (summaryStatus && summaryStatus.indexOf("error:") === 0) ? "要約を再試行" : "🔄 要約をやり直す";
       retryBtn.addEventListener("click", function () { requestAudioSummary(entry); });
     }
 
