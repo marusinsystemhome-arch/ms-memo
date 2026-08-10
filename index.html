@@ -822,7 +822,10 @@
       autoGrow: true,
       onClear: function () { entry.aiSummary = ""; setDirty(true); }
     }));
-    memoSection.appendChild(makeTextareaGroup("フリーメモ", entry.freeMemo, function (v) { entry.freeMemo = v; setDirty(true); }, "自由に書き込むメモ欄"));
+    memoSection.appendChild(makeTextareaGroup("フリーメモ", entry.freeMemo, function (v) { entry.freeMemo = v; setDirty(true); }, "自由に書き込むメモ欄", {
+      autoGrow: true,
+      onClear: function () { entry.freeMemo = ""; setDirty(true); }
+    }));
     memoSection.appendChild(buildImagesRow(entry));
 
     frag.appendChild(memoSection);
