@@ -9,8 +9,10 @@
  * Data is one JSON file (FILE_NAME) holding all entries. Audio/image
  * attachments are stored as separate Drive files inside FOLDER_NAME and
  * stay private — they are only ever served back out through this script's
- * doGet "file" action (?action=file&id=...), which streams the blob
- * directly. Nothing needs its Drive sharing changed.
+ * doPost "getFile" action, which returns the file as base64 JSON. (The
+ * doGet "file" action below is legacy: Apps Script Web Apps reject a raw
+ * Blob return from doGet with "returned value was not a supported return
+ * type", so nothing calls it anymore — kept only for manual debugging.)
  */
 
 var APP_FOLDER_NAME = "MSメモ";
@@ -183,6 +185,23 @@ function doPost(e) {
       body = JSON.parse(e.postData.contents);
     }
     var action = body.action;
+
+    if (action === "getFile") {
+      var fileId = body.fileId;
+      if (!fileId) return jsonOutput_({ ok: false, error: "missing_params" });
+      try {
+        var attFile = DriveApp.getFileById(fileId);
+        var attBlob = attFile.getBlob();
+        return jsonOutput_({
+          ok: true,
+          dataBase64: Utilities.base64Encode(attBlob.getBytes()),
+          mimeType: attBlob.getContentType(),
+          name: attFile.getName()
+        });
+      } catch (err) {
+        return jsonOutput_({ ok: false, error: "not_found" });
+      }
+    }
 
     if (action === "load") {
       var file = findFile_();

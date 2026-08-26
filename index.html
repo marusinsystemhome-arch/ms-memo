@@ -661,6 +661,18 @@
     return APPS_SCRIPT_URL + "?action=file&id=" + encodeURIComponent(fileId);
   }
 
+  // Apps ScriptのdoGetはBlobを直接返すと「サポートされている戻り値の型では
+  // ありません」エラーになるため、録音・画像とも常にdoPost経由でBase64取得
+  // してからBlob化する(fileUrl/doGetのfile actionはもう使わない)。
+  function fetchFileBlob(fileId) {
+    return callBackend("getFile", { fileId: fileId }).then(function (res) {
+      var binary = atob(res.dataBase64);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: res.mimeType || "application/octet-stream" });
+    });
+  }
+
   // ---------------- Rendering ----------------
 
   function render() {
@@ -990,10 +1002,9 @@
       audioEl.controls = true;
       // Apps ScriptのWebアプリはHTTP Rangeリクエストに対応しておらず、
       // <audio src="...">で直接指定すると特にサイズの大きいファイルで
-      // 再生エラーになりやすい(iOS Safari)。fetchで丸ごと取得しBlob URLに
+      // 再生エラーになりやすい(iOS Safari)。Base64で丸ごと取得しBlob URLに
       // することで回避する。
-      fetch(fileUrl(entry.audio.fileId))
-        .then(function (res) { return res.blob(); })
+      fetchFileBlob(entry.audio.fileId)
         .then(function (blob) { audioEl.src = URL.createObjectURL(blob); })
         .catch(function () { /* controls will just show an unplayable state */ });
       var chip = document.createElement("span");
@@ -1112,9 +1123,14 @@
       var tile = document.createElement("div");
       tile.className = "image-tile";
       var imgEl = document.createElement("img");
-      imgEl.src = fileUrl(img.fileId);
       imgEl.alt = img.name || "";
-      imgEl.addEventListener("click", function () { window.open(fileUrl(img.fileId), "_blank"); });
+      fetchFileBlob(img.fileId).then(function (blob) { imgEl.src = URL.createObjectURL(blob); });
+      imgEl.addEventListener("click", function () {
+        var win = window.open("");
+        fetchFileBlob(img.fileId).then(function (blob) {
+          if (win) win.location = URL.createObjectURL(blob);
+        });
+      });
       var delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "img-del";
