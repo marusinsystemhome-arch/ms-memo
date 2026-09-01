@@ -438,7 +438,7 @@
     <div class="masthead-text">
       <p class="eyebrow">MORNING SEMINAR NOTE</p>
       <h1>MSメモ</h1>
-      <p class="sub">モーニングセミナー・基礎講座などのメモアプリです。日付・講座区分・講師名・テーマと、録音ファイル/AI要約/フリーメモ/画像を記録できます。入力すると自動で保存されます。</p>
+      <p class="sub">モーニングセミナー・基礎講座などのメモアプリです。日付・講座区分・講師名・テーマと、録音ファイル/AI要約/フリーメモ/画像を記録できます。入力は自動保存されますが、他のアプリに切り替える前は念のため「💾 保存」を押してください。</p>
     </div>
   </div>
 
@@ -457,6 +457,7 @@
     <span class="sync-pill"><span id="syncDot" class="dot pulse"></span><span id="syncText">読み込み中…</span></span>
     <span class="spacer"></span>
     <span id="dirtyFlag" class="dirty-flag">● 保存中…</span>
+    <button class="btn" id="saveNowBtn" type="button">💾 保存</button>
     <div class="menu-wrap">
       <button class="btn menu-btn" id="menuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="メニュー">⋮</button>
       <div class="dropdown-panel" id="dropdownPanel" style="display:none;">
@@ -574,6 +575,7 @@
     syncDot: document.getElementById("syncDot"),
     syncText: document.getElementById("syncText"),
     dirtyFlag: document.getElementById("dirtyFlag"),
+    saveNowBtn: document.getElementById("saveNowBtn"),
     reloadBtn: document.getElementById("reloadBtn"),
     errorBanner: document.getElementById("errorBanner"),
     errorBannerMsg: document.getElementById("errorBannerMsg"),
@@ -647,6 +649,7 @@
   function setDirty(v) {
     state.dirty = v;
     els.dirtyFlag.classList.toggle("show", v);
+    els.saveNowBtn.classList.toggle("btn-primary", v);
     if (v) { scheduleAutoSave(); }
   }
 
@@ -664,12 +667,12 @@
   // Apps ScriptのdoGetはBlobを直接返すと「サポートされている戻り値の型では
   // ありません」エラーになるため、録音・画像とも常にdoPost経由でBase64取得
   // してからBlob化する(fileUrl/doGetのfile actionはもう使わない)。
+  // Base64→バイト変換はatob+1文字ずつのループだと録音ファイル(数十MB)で
+  // メインスレッドが長時間固まるため、ブラウザ内蔵のdata URLデコーダーを使う。
   function fetchFileBlob(fileId) {
     return callBackend("getFile", { fileId: fileId }).then(function (res) {
-      var binary = atob(res.dataBase64);
-      var bytes = new Uint8Array(binary.length);
-      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return new Blob([bytes], { type: res.mimeType || "application/octet-stream" });
+      var dataUrl = "data:" + (res.mimeType || "application/octet-stream") + ";base64," + res.dataBase64;
+      return fetch(dataUrl).then(function (r) { return r.blob(); });
     });
   }
 
@@ -740,13 +743,27 @@
 
     var body = document.createElement("div");
     body.className = "entry-body";
-    body.appendChild(buildEntryBody(entry, updateSummary));
+    var lazyLoaders = [];
+    body.appendChild(buildEntryBody(entry, updateSummary, lazyLoaders));
     details.appendChild(body);
+
+    // 録音・画像は容量が大きいので、開いたときだけ取得する(一覧を開いた
+    // 瞬間に全メモ分を先読みしてしまうと件数が増えるほど重くなるため)。
+    var attachmentsLoaded = false;
+    function loadAttachmentsOnce() {
+      if (attachmentsLoaded) return;
+      attachmentsLoaded = true;
+      lazyLoaders.forEach(function (fn) { fn(); });
+    }
+    if (details.open) loadAttachmentsOnce();
+    details.addEventListener("toggle", function () {
+      if (details.open) loadAttachmentsOnce();
+    });
 
     return details;
   }
 
-  function buildEntryBody(entry, updateSummary) {
+  function buildEntryBody(entry, updateSummary, lazyLoaders) {
     var frag = document.createDocumentFragment();
 
     // Row: date + course type
@@ -829,7 +846,7 @@
     memoTitle.textContent = "メモ";
     memoSection.appendChild(memoTitle);
 
-    memoSection.appendChild(buildAudioRow(entry));
+    memoSection.appendChild(buildAudioRow(entry, lazyLoaders));
     memoSection.appendChild(makeTextareaGroup("AIで要約した内容", entry.aiSummary, function (v) { entry.aiSummary = v; setDirty(true); }, "録音をアップロードすると自動で要約されます（手動で編集・追記も可）", {
       autoGrow: true,
       onClear: function () { entry.aiSummary = ""; setDirty(true); }
@@ -838,7 +855,7 @@
       autoGrow: true,
       onClear: function () { entry.freeMemo = ""; setDirty(true); }
     }));
-    memoSection.appendChild(buildImagesRow(entry));
+    memoSection.appendChild(buildImagesRow(entry, lazyLoaders));
 
     frag.appendChild(memoSection);
 
@@ -931,7 +948,7 @@
 
   // ---------------- Audio ----------------
 
-  function buildAudioRow(entry) {
+  function buildAudioRow(entry, lazyLoaders) {
     var wrap = document.createElement("div");
     wrap.className = "attach-row";
     var label = document.createElement("label");
@@ -1003,10 +1020,12 @@
       // Apps ScriptのWebアプリはHTTP Rangeリクエストに対応しておらず、
       // <audio src="...">で直接指定すると特にサイズの大きいファイルで
       // 再生エラーになりやすい(iOS Safari)。Base64で丸ごと取得しBlob URLに
-      // することで回避する。
-      fetchFileBlob(entry.audio.fileId)
-        .then(function (blob) { audioEl.src = URL.createObjectURL(blob); })
-        .catch(function () { /* controls will just show an unplayable state */ });
+      // することで回避する。取得は容量が大きいため、メモを開いたときだけ行う。
+      lazyLoaders.push(function () {
+        fetchFileBlob(entry.audio.fileId)
+          .then(function (blob) { audioEl.src = URL.createObjectURL(blob); })
+          .catch(function () { /* controls will just show an unplayable state */ });
+      });
       var chip = document.createElement("span");
       chip.className = "file-chip";
       var chipText = document.createElement("span");
@@ -1104,7 +1123,7 @@
 
   // ---------------- Images ----------------
 
-  function buildImagesRow(entry) {
+  function buildImagesRow(entry, lazyLoaders) {
     var wrap = document.createElement("div");
     wrap.className = "attach-row";
     var label = document.createElement("label");
@@ -1124,7 +1143,9 @@
       tile.className = "image-tile";
       var imgEl = document.createElement("img");
       imgEl.alt = img.name || "";
-      fetchFileBlob(img.fileId).then(function (blob) { imgEl.src = URL.createObjectURL(blob); });
+      lazyLoaders.push(function () {
+        fetchFileBlob(img.fileId).then(function (blob) { imgEl.src = URL.createObjectURL(blob); });
+      });
       imgEl.addEventListener("click", function () {
         var win = window.open("");
         fetchFileBlob(img.fileId).then(function (blob) {
@@ -1427,6 +1448,21 @@
   });
   els.retryLoadBtn.addEventListener("click", function () { loadLatest(); });
   els.addEntryBtn.addEventListener("click", addEntry);
+
+  els.saveNowBtn.addEventListener("click", function () {
+    if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+    saveNow();
+  });
+
+  // 編集後すぐアプリを切り替える/画面をロックすると、1.5秒の自動保存タイマーが
+  // 発火する前にiOS SafariがタブをバックグラウンドでSuspendし、保存されない
+  // ことがある。画面が非表示になる瞬間に即座に保存を確定させて防ぐ。
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden" && state.dirty) {
+      if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+      saveNow();
+    }
+  });
 
   render();
   loadLatest().catch(function () {});
