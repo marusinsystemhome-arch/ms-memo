@@ -429,6 +429,17 @@
   }
   .confirm-msg { margin: 0 0 18px; font-size: 14px; line-height: 1.65; color: var(--ink); }
   .confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+  .lightbox-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
+    display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 1000;
+  }
+  .lightbox-overlay img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+  .lightbox-close {
+    position: absolute; top: 16px; right: 16px; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15); color: #fff; border: none; font-size: 20px; line-height: 1;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -492,6 +503,11 @@
       <button type="button" id="confirmOkBtn" class="btn btn-primary">OK</button>
     </div>
   </div>
+</div>
+
+<div id="lightboxOverlay" class="lightbox-overlay" style="display:none;">
+  <button type="button" class="lightbox-close" id="lightboxCloseBtn" aria-label="閉じる">×</button>
+  <img id="lightboxImg" src="" alt="">
 </div>
 
 <script>
@@ -587,8 +603,27 @@
     historyToggleBtn: document.getElementById("historyToggleBtn"),
     historyToggleArrow: document.getElementById("historyToggleArrow"),
     historyList: document.getElementById("historyList"),
-    addEntryBtn: document.getElementById("addEntryBtn")
+    addEntryBtn: document.getElementById("addEntryBtn"),
+    lightboxOverlay: document.getElementById("lightboxOverlay"),
+    lightboxImg: document.getElementById("lightboxImg"),
+    lightboxCloseBtn: document.getElementById("lightboxCloseBtn")
   };
+
+  // 画像タップ時の全画面プレビュー。以前はwindow.open()で新規タブに
+  // Blob URLを渡していたが、iOS SafariはBlob URLを作成元のタブでしか
+  // 解決できず新規タブが空白になるため、同じページ内に表示する。
+  function openImageLightbox(src) {
+    els.lightboxImg.src = src;
+    els.lightboxOverlay.style.display = "flex";
+  }
+  function closeImageLightbox() {
+    els.lightboxOverlay.style.display = "none";
+    els.lightboxImg.src = "";
+  }
+  els.lightboxCloseBtn.addEventListener("click", closeImageLightbox);
+  els.lightboxOverlay.addEventListener("click", function (e) {
+    if (e.target === els.lightboxOverlay) closeImageLightbox();
+  });
 
   function customConfirm(message, okLabel) {
     return new Promise(function (resolve) {
@@ -1147,10 +1182,11 @@
         fetchFileBlob(img.fileId).then(function (blob) { imgEl.src = URL.createObjectURL(blob); });
       });
       imgEl.addEventListener("click", function () {
-        var win = window.open("");
-        fetchFileBlob(img.fileId).then(function (blob) {
-          if (win) win.location = URL.createObjectURL(blob);
-        });
+        if (imgEl.src) {
+          openImageLightbox(imgEl.src);
+        } else {
+          fetchFileBlob(img.fileId).then(function (blob) { openImageLightbox(URL.createObjectURL(blob)); });
+        }
       });
       var delBtn = document.createElement("button");
       delBtn.type = "button";
